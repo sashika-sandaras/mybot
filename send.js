@@ -10,7 +10,6 @@ async function startBot() {
     const userJid = process.env.USER_JID;
     const fileId = process.env.FILE_ID;
 
-    // --- Session Setup ---
     if (!fs.existsSync('./auth_info')) fs.mkdirSync('./auth_info');
     if (sessionData && sessionData.startsWith('Gifted~')) {
         try {
@@ -40,91 +39,67 @@ async function startBot() {
     sock.ev.on('connection.update', async (update) => {
         const { connection } = update;
         if (connection === 'open') {
-            console.log('✅ Connected to WhatsApp');
-
             try {
                 await sendMsg("✅ *Request Received...*");
                 await delay(500);
-                await sendMsg("📥 *Download වෙමින් පවතී...*");
+                await sendMsg("📥 *Downloading 700MB+ File...*");
 
-                // --- Google Drive Advanced Downloader ---
+                // Python script using gdown to handle large files and virus scan warnings
                 const pyScript = `
-import requests, os, sys, re, subprocess
+import gdown
+import os
+import sys
 
-def get_drive_link(id):
-    URL = "https://docs.google.com/uc?export=download"
-    session = requests.Session()
-    # Confirm token එක ලබා ගැනීම (ලොකු ෆයිල් සඳහා)
-    response = session.get(URL, params={'id': id}, stream=True)
-    token = None
-    for key, value in response.cookies.items():
-        if key.startswith('download_warning'):
-            token = value
-            break
-    if token:
-        return f"{URL}&id={id}&confirm={token}"
-    return f"{URL}&id={id}"
+file_id = "${fileId}"
+url = f'https://drive.google.com/uc?id={file_id}'
+output = 'video_content.mp4'
 
 try:
-    f_id = "${fileId}"
-    d_url = get_drive_link(f_id)
-    
-    # Header එකෙන් ෆයිල් එකේ නම හොයා ගැනීම
-    r = requests.get(d_url, stream=True)
-    d = r.headers.get('content-disposition')
-    if d:
-        fname = re.findall('filename="(.+)"', d)[0]
-    else:
-        fname = "video.mp4"
-    
-    # Curl භාවිතා කර බාගැනීම
-    cmd = f'curl -L -k -o "{fname}" "{d_url}"'
-    subprocess.call(cmd, shell=True)
-    
-    # ෆයිල් එකේ සයිස් එක චෙක් කරනවා (KB 2 ප්‍රශ්නය මගහරින්න)
-    if os.path.exists(fname) and os.path.getsize(fname) > 20480: # 20KB ට වඩා වැඩි නම් පමණක්
-        print(fname)
+    # gdown automatically handles the 'virus scan warning' for large files
+    path = gdown.download(url, output, quiet=False, fuzzy=True)
+    if path and os.path.exists(path):
+        print(path)
     else:
         sys.exit(1)
-except:
+except Exception as e:
+    sys.stderr.write(str(e))
     sys.exit(1)
 `;
                 fs.writeFileSync('downloader.py', pyScript);
+
+                // Ensure gdown is installed
+                try { execSync('pip install gdown'); } catch(e) {}
 
                 let fileName;
                 try {
                     fileName = execSync('python3 downloader.py').toString().trim();
                 } catch (e) {
-                    throw new Error("DL_FAILED");
+                    throw new Error("DOWNLOAD_FAILED");
                 }
 
-                if (!fileName || !fs.existsSync(fileName)) throw new Error("FILE_MISSING");
+                if (!fileName || !fs.existsSync(fileName)) throw new Error("FILE_NOT_FOUND");
 
-                await sendMsg("📤 *Upload වෙමින් පවතී...*");
+                await sendMsg("📤 *Upload වෙමින් පවතී... (700MB නිසා මඳක් ප්‍රමාද විය හැක)*");
 
                 const ext = path.extname(fileName).toLowerCase();
-                const isSub = ['.srt', '.vtt', '.ass'].includes(ext);
-                const mime = isSub ? 'text/plain' : (ext === '.mp4' ? 'video/mp4' : 'video/x-matroska');
-                const header = isSub ? "💚 *Subtitles Upload Successfully...*" : "💚 *Video Upload Successfully...*";
+                const mime = (ext === '.mkv') ? 'video/x-matroska' : 'video/mp4';
 
-                // WhatsApp Document Message
+                // Send to WhatsApp
                 await sock.sendMessage(userJid, {
                     document: { url: `./${fileName}` },
                     fileName: fileName,
                     mimetype: mime,
-                    caption: `${header}\n\n📦 *File :* ${fileName}\n\n🏷️ *Mflix WhDownloader*\n💌 *Made With Sashika Sandras*`
+                    caption: `💚 *Video Upload Successfully...*\n\n📦 *File :* ${fileName}\n\n🏷️ *Mflix WhDownloader*\n💌 *Made With Sashika Sandras*`
                 });
 
                 await sendMsg("☺️ *Mflix භාවිතා කළ ඔබට සුභ දවසක්...*\n*කරුණාකර Report කිරීමෙන් වළකින්න...* 💝");
                 
-                // Cleanup
                 if (fs.existsSync(fileName)) fs.unlinkSync(fileName);
                 if (fs.existsSync('downloader.py')) fs.unlinkSync('downloader.py');
-                
                 setTimeout(() => process.exit(0), 5000);
 
             } catch (err) {
-                await sendMsg("❌ *වීඩියෝ හෝ Subtitles ගොනුවේ දෝෂයක්...*");
+                await sendMsg("❌ *දෝෂය:* 700MB ගොනුව බාගත කිරීමට නොහැකි විය. කරුණාකර Google Drive Link එක 'Public' (Anyone with link) දැයි බලන්න.");
                 process.exit(1);
             }
         }

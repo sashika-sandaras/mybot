@@ -1,41 +1,80 @@
-- name: Run Script
+name: Send Movie File (Test)
+
+on:
+  workflow_dispatch:
+    inputs:
+      file_id:
+        description: 'වීඩියෝ එකේ ID එක (GDrive හෝ VOE)'
+        required: true
+        default: '16WlbtOM4waRMqpDa34mQpyYFKdthqASf'
+      user_jid:
+        description: 'ඔයාගේ WhatsApp Number එක'
+        required: true
+        default: '94766886046@s.whatsapp.net'
+
+jobs:
+  send:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v3
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '20'
+
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+
+      - name: Install Dependencies
+        run: |
+          pip install requests
+          npm install @whiskeysockets/baileys pino axios qrcode-terminal
+
+      - name: Run Script
         env:
           VOE_KEY: ${{ secrets.VOE_KEY }}
           SESSION_ID: ${{ secrets.SESSION_ID }}
           FILE_ID: ${{ github.event.inputs.file_id }}
           USER_JID: ${{ github.event.inputs.user_jid }}
         run: |
+          # Python Downloader Script
           cat <<'EOF' > downloader.py
           import os, requests, sys
           file_id = os.getenv('FILE_ID')
           voe_key = os.getenv('VOE_KEY')
           url = None
           
+          # Browser එකක් විදිහට පෙනී සිටීමට Headers
           headers = {
               'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
           }
 
-          if len(file_id) > 20: # GDrive ID
+          if len(file_id) > 20: # GDrive
               url = f"https://drive.google.com/uc?export=download&id={file_id}&confirm=t"
-          else: # VOE ID
+          else: # VOE
               api_url = f"https://voe.sx/api/drive/v2/file/info?key={voe_key}&file_code={file_id}"
               r = requests.get(api_url).json()
               url = r.get('result', {}).get('direct_url')
 
           if url:
               print(f"Downloading from: {url}")
-              r = requests.get(url, headers=headers, stream=True, allow_redirects=True)
-              with open('movie_mflix.mp4', 'wb') as f:
-                  for chunk in r.iter_content(chunk_size=1024*1024): # 1MB chunks
-                      if chunk: f.write(chunk)
+              with requests.get(url, headers=headers, stream=True, allow_redirects=True) as r:
+                  r.raise_for_status()
+                  with open('movie_mflix.mp4', 'wb') as f:
+                      for chunk in r.iter_content(chunk_size=1024*1024): # 1MB chunks
+                          if chunk: f.write(chunk)
               
               size = os.path.getsize('movie_mflix.mp4')
-              print(f"Download Complete! Size: {size / (1024*1024):.2 dream} MB")
-              if size < 10000: # 10KB වලට වඩා අඩු නම් ඒක වීඩියෝ එකක් නෙවෙයි
-                  print("Error: File is too small, likely an error page.")
+              print(f"Download Complete! File Size: {size / (1024*1024):.2f} MB")
+              if size < 50000: # 50KB ට වඩා අඩු නම් ඒක Error එකක්
+                  print("Error: Downloaded file is too small. Probably an error page.")
                   sys.exit(1)
           else:
-              print("Error: URL not found")
+              print("Error: Could not find download URL")
               sys.exit(1)
           EOF
           

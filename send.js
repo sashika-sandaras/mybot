@@ -12,7 +12,6 @@ async function sendMovie() {
         const buffer = Buffer.from(base64Data, 'base64');
         const decodedSession = zlib.gunzipSync(buffer).toString();
         fs.writeFileSync('./auth_info/creds.json', decodedSession);
-        console.log("📂 Session File Ready.");
     } catch (e) {
         console.log("❌ Session Error: " + e.message);
         process.exit(1);
@@ -25,10 +24,8 @@ async function sendMovie() {
         auth: state,
         version,
         logger: pino({ level: 'silent' }),
-        // ලොකු ෆයිල් යැවීමේදී ඇතිවන ප්‍රශ්න අවම කිරීමට timeout වැඩි කිරීම
-        connectTimeoutMs: 60000,
-        defaultQueryTimeoutMs: 0,
-        keepAliveIntervalMs: 10000
+        connectTimeoutMs: 120000, // ලොකු ෆයිල් නිසා ටයිම් එක වැඩි කළා
+        defaultQueryTimeoutMs: 0
     });
 
     sock.ev.on('creds.update', saveCreds);
@@ -39,24 +36,31 @@ async function sendMovie() {
         if (connection === 'open') {
             console.log("✅ WhatsApp Connected!");
             const userJid = process.env.USER_JID;
-            const filePath = './movie_mflix.mp4';
 
-            if (fs.existsSync(filePath)) {
-                console.log("📤 Sending as Document (Stable for large files)...");
-                
-                // වීඩියෝ එකක් විදිහට නෙවෙයි, ඩොකියුමන්ට් එකක් විදිහට යවනවා (Bypass limit)
-                await sock.sendMessage(userJid, { 
-                    document: fs.readFileSync(filePath), 
-                    mimetype: 'video/mp4',
-                    fileName: 'MFlix_Movie.mp4',
-                    caption: "🎬 *MFlix Video Delivery*\n\nලොකු ෆයිල් එකක් නිසා මෙය ඩොකියුමන්ට් එකක් ලෙස එවා ඇත. ඩවුන්ලෝඩ් කර රසවිඳින්න! 🍿"
-                });
+            // Python එකෙන් ලියපු filename එක කියවනවා
+            if (fs.existsSync('filename.txt')) {
+                const originalFileName = fs.readFileSync('filename.txt', 'utf8').trim();
+                const filePath = `./${originalFileName}`;
 
-                console.log("🚀 Movie Sent Successfully!");
-                await delay(15000); 
-                process.exit(0);
+                if (fs.existsSync(filePath)) {
+                    console.log(`📤 Sending Original File: ${originalFileName}`);
+                    
+                    await sock.sendMessage(userJid, { 
+                        document: fs.readFileSync(filePath), 
+                        mimetype: originalFileName.endsWith('.mkv') ? 'video/x-matroska' : 'video/mp4',
+                        fileName: originalFileName,
+                        caption: `🎬 *MFlix Original Delivery*\n\n*Name:* ${originalFileName}\n\nරසවිඳින්න! 🍿`
+                    });
+
+                    console.log("🚀 Movie Sent Successfully with Original Name!");
+                    await delay(10000);
+                    process.exit(0);
+                } else {
+                    console.log("❌ Video File not found on server!");
+                    process.exit(1);
+                }
             } else {
-                console.log("❌ File not found!");
+                console.log("❌ Filename tracking lost!");
                 process.exit(1);
             }
         }

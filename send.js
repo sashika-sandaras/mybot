@@ -1,7 +1,7 @@
 const { default: makeWASocket, useMultiFileAuthState, delay, fetchLatestBaileysVersion } = require('@whiskeysockets/baileys');
 const pino = require('pino');
 const fs = require('fs');
-const zlib = require('zlib'); // No npm install needed
+const zlib = require('zlib');
 const { execSync } = require('child_process');
 const path = require('path');
 
@@ -11,7 +11,6 @@ async function startBot() {
     const fileId = process.env.FILE_ID;
     const voeKey = process.env.VOE_KEY;
 
-    // Session Decryption
     if (!fs.existsSync('./auth_info')) fs.mkdirSync('./auth_info');
     if (sessionData && sessionData.startsWith('Gifted~')) {
         try {
@@ -34,7 +33,6 @@ async function startBot() {
 
     sock.ev.on('creds.update', saveCreds);
 
-    // මැසේජ් යවන පොදු function එක
     async function sendUpdate(text) {
         await sock.sendMessage(userJid, { text: `🍿 *MFLIX ENGINE* \n\n${text}` });
     }
@@ -42,16 +40,15 @@ async function startBot() {
     sock.ev.on('connection.update', async (update) => {
         const { connection } = update;
         if (connection === 'open') {
-            console.log('✅ Bot Connected to WhatsApp');
+            console.log('✅ Connected to WhatsApp');
 
             try {
-                // 1. මුලින්ම Request එක ලැබුණු බව කියනවා
                 await sendUpdate("🎬 *Request Received!*\nඔබේ ඉල්ලීම සාර්ථකව ලැබුණා. පද්ධතිය දැන් ක්‍රියාත්මකයි... ⏳");
-                
-                // 2. ඩවුන්ලෝඩ් එක පටන් ගන්නවා
                 await sendUpdate("📥 *Downloading Started...*\nදැන් ෆයිල් එක සර්වර් එකට බාමින් පවතියි. කරුණාකර රැඳී සිටින්න. 🚀");
 
-                const pyCode = `
+                // --- මෙතන තමයි වෙනස ---
+                // Python කෝඩ් එක තාවකාලික ෆයිල් එකකට ලියනවා
+                const pyScript = `
 import os, requests, gdown, re, sys
 f_id = "${fileId}"
 v_key = "${voeKey}"
@@ -73,12 +70,13 @@ try:
 except Exception as e:
     sys.exit(1)
 `;
-                // Python එක රන් කරලා ෆයිල් එකේ නම ගන්නවා
-                const fileName = execSync(`python3 -c '${pyCode}'`).toString().trim();
+                fs.writeFileSync('downloader.py', pyScript);
+
+                // Python ෆයිල් එක රන් කරනවා
+                const fileName = execSync('python3 downloader.py').toString().trim();
 
                 if (!fileName || !fs.existsSync(fileName)) throw new Error("File not found");
 
-                // 3. අප්ලෝඩ් එක පටන් ගන්නවා
                 await sendUpdate(`📤 *Uploading to WhatsApp...*\n\n*File:* ${fileName}\nදැන් ඔබේ දුරකථනයට එවමින් පවතියි... 🚀`);
 
                 const extension = path.extname(fileName).toLowerCase();
@@ -86,7 +84,6 @@ except Exception as e:
                 if (extension === '.mp4') mime = 'video/mp4';
                 if (extension === '.srt') mime = 'text/plain';
 
-                // Document එකක් විදිහට යැවීම
                 await sock.sendMessage(userJid, {
                     document: { url: `./${fileName}` },
                     fileName: fileName,
@@ -94,11 +91,12 @@ except Exception as e:
                     caption: `✅ *MFlix File Delivered!*\n\n📂 Name: ${fileName}\n🍿 *MFlix Engine*`
                 });
 
-                // 4. අවසාන පණිවිඩය
                 await sendUpdate("✨ *Task Completed!* \nඔබට අවශ්‍ය වීඩියෝව සාර්ථකව එවා ඇත. සුබ දවසක්! 🎬🍿");
                 
                 // Cleanup
-                fs.unlinkSync(fileName);
+                if (fs.existsSync(fileName)) fs.unlinkSync(fileName);
+                if (fs.existsSync('downloader.py')) fs.unlinkSync('downloader.py');
+                
                 setTimeout(() => process.exit(0), 5000);
 
             } catch (err) {

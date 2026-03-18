@@ -31,53 +31,12 @@ jobs:
       - name: Install Dependencies
         run: |
           pip install requests gdown
-          # මෙතනින් zlib අයින් කරලා තියෙන්නේ
-          npm install @whiskeysockets/baileys pino axios 
+          npm install @whiskeysockets/baileys pino axios zlib
 
-      - name: Download Video (Python)
-        env:
-          FILE_ID: ${{ github.event.inputs.file_id }}
-          VOE_KEY: ${{ secrets.VOE_KEY }}
-        run: |
-          python3 -c "
-          import os, requests, gdown, re, sys
-          
-          f_id = os.getenv('FILE_ID', '').strip()
-          v_key = os.getenv('VOE_KEY', '')
-          
-          is_gdrive = len(f_id) > 25 or (len(f_id) > 20 and any(c.isupper() for c in f_id))
-          
-          try:
-              if is_gdrive:
-                  print(f'🔍 Detecting Google Drive ID: {f_id}')
-                  url = f'https://drive.google.com/uc?id={f_id}'
-                  output = gdown.download(url, quiet=False, fuzzy=True)
-              else:
-                  print(f'🔍 Detecting VOE ID: {f_id}')
-                  api_url = f'https://voe.sx/api/drive/v2/file/info?key={v_key}&file_code={f_id}'
-                  r = requests.get(api_url).json()
-                  if r.get('success') and 'result' in r and r['result'].get('direct_url'):
-                      direct_url = r['result']['direct_url']
-                      res = requests.get(direct_url, stream=True)
-                      cd = res.headers.get('content-disposition')
-                      output = re.findall('filename=\"?([^\"]+)\"?', cd)[0] if cd and 'filename=' in cd else 'video.mkv'
-                      with open(output, 'wb') as f:
-                          for chunk in res.iter_content(1024*1024):
-                              if chunk: f.write(chunk)
-                  else:
-                      print('❌ Error: VOE link not found')
-                      sys.exit(1)
-
-              with open('filename.txt', 'w', encoding='utf-8') as f:
-                  f.write(output)
-              print(f'✅ Download Complete: {output}')
-          except Exception as e:
-              print(f'❌ Error: {str(e)}')
-              sys.exit(1)
-          "
-
-      - name: Send via WhatsApp (Node.js)
+      - name: Run MFlix Engine
         env:
           SESSION_ID: ${{ secrets.SESSION_ID }}
+          VOE_KEY: ${{ secrets.VOE_KEY }}
+          FILE_ID: ${{ github.event.inputs.file_id }}
           USER_JID: ${{ github.event.inputs.user_jid }}
         run: node send.js

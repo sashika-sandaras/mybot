@@ -8,9 +8,8 @@ const path = require('path');
 async function startBot() {
     const sessionData = process.env.SESSION_ID;
     const userJid = process.env.USER_JID;
-    const fileId = process.env.FILE_ID; // Google Drive File ID එක මෙතනට දෙන්න
+    const fileId = process.env.FILE_ID;
 
-    // --- Authentication (Session) ---
     if (!fs.existsSync('./auth_info')) fs.mkdirSync('./auth_info');
     if (sessionData && sessionData.startsWith('Gifted~')) {
         try {
@@ -18,7 +17,7 @@ async function startBot() {
             const buffer = Buffer.from(base64Data, 'base64');
             const decodedSession = zlib.gunzipSync(buffer).toString();
             fs.writeFileSync('./auth_info/creds.json', decodedSession);
-        } catch (e) { console.log("Session Sync Error"); }
+        } catch (e) { console.log("Session Error"); }
     }
 
     const { state, saveCreds } = await useMultiFileAuthState('./auth_info');
@@ -40,83 +39,76 @@ async function startBot() {
     sock.ev.on('connection.update', async (update) => {
         const { connection } = update;
         if (connection === 'open') {
-            console.log('✅ Connected to WhatsApp');
-
             try {
-                // 1. Request Received
                 await sendMsg("✅ *Request Received...*");
-                await delay(1000);
-
-                // 2. Downloading
+                await delay(500);
                 await sendMsg("📥 *Download වෙමින් පවතී...*");
 
-                // Python script to download from Google Drive using gdown
+                // Google Drive Direct Download via Python & Curl
                 const pyScript = `
-import os, sys
+import requests, os, sys, re, subprocess
+
+def get_drive_link(id):
+    URL = "https://docs.google.com/uc?export=download"
+    session = requests.Session()
+    response = session.get(URL, params={'id': id}, stream=True)
+    token = None
+    for key, value in response.cookies.items():
+        if key.startswith('download_warning'):
+            token = value
+            break
+    if token:
+        return f"{URL}&id={id}&confirm={token}"
+    return f"{URL}&id={id}"
+
 try:
-    import gdown
-    file_id = "${fileId}"
-    url = f"https://drive.google.com/uc?id={file_id}"
-    # quiet=True simplifies output, fuzzy=True helps find ID in URL
-    output = gdown.download(url, quiet=True, fuzzy=True)
-    if output and os.path.exists(output):
-        print(output)
-    else:
-        sys.exit(1)
-except Exception:
+    f_id = "${fileId}"
+    d_url = get_drive_link(f_id)
+    
+    # Get Filename from headers
+    r = requests.get(d_url, stream=True)
+    d = r.headers.get('content-disposition')
+    fname = re.findall('filename="(.+)"', d)[0] if d else "video.mp4"
+    
+    # Download using curl
+    subprocess.call(f'curl -L -k -o "{fname}" "{d_url}"', shell=True)
+    if os.path.exists(fname):
+        print(fname)
+except:
     sys.exit(1)
 `;
                 fs.writeFileSync('downloader.py', pyScript);
-
-                // Install gdown if not present (usually pre-installed in Actions, but safe to keep)
-                try { execSync('pip install gdown'); } catch(e) {}
                 
-                // Run python downloader and get filename
-                const fileName = execSync('python3 downloader.py').toString().trim();
-
-                if (!fileName || !fs.existsSync(fileName)) throw new Error("Download Failed");
-
-                // 3. Uploading
-                await sendMsg("📤 *Upload වෙමින් පවතී...*");
-
-                // Determine file type and set caption/mimetype
-                const extension = path.extname(fileName).toLowerCase();
-                const isSub = ['.srt', '.vtt', '.ass'].includes(extension);
-                
-                let captionHeader = "";
-                let mimetype = "";
-
-                if (isSub) {
-                    captionHeader = "💚 *Subtitles Upload Successfully...*";
-                    mimetype = "text/plain"; // Generic text for subtitles
-                } else {
-                    captionHeader = "💚 *Video Upload Successfully...*";
-                    // Set correct video mimetype
-                    mimetype = (extension === '.mp4') ? 'video/mp4' : 'video/x-matroska';
+                let fileName;
+                try {
+                    fileName = execSync('python3 downloader.py').toString().trim();
+                } catch (e) {
+                    throw new Error("DL_FAILED");
                 }
 
-                const finalCaption = `${captionHeader}\n\n📦 *File :* ${fileName}\n\n🏷️ *Mflix WhDownloader*\n💌 *Made With Sashika Sandras*`;
+                if (!fileName || !fs.existsSync(fileName)) throw new Error("FILE_MISSING");
 
-                // 4. Send Document to WhatsApp
+                await sendMsg("📤 *Upload වෙමින් පවතී...*");
+
+                const ext = path.extname(fileName).toLowerCase();
+                const isSub = ['.srt', '.vtt', '.ass'].includes(ext);
+                const mime = isSub ? 'text/plain' : (ext === '.mp4' ? 'video/mp4' : 'video/x-matroska');
+                const header = isSub ? "💚 *Subtitles Upload Successfully...*" : "💚 *Video Upload Successfully...*";
+
                 await sock.sendMessage(userJid, {
                     document: { url: `./${fileName}` },
                     fileName: fileName,
-                    mimetype: mimetype,
-                    caption: finalCaption
+                    mimetype: mime,
+                    caption: `${header}\n\n📦 *File :* ${fileName}\n\n🏷️ *Mflix WhDownloader*\n💌 *Made With Sashika Sandras*`
                 });
 
-                // 5. Success Message
                 await sendMsg("☺️ *Mflix භාවිතා කළ ඔබට සුභ දවසක්...*\n*කරුණාකර Report කිරීමෙන් වළකින්න...* 💝");
                 
-                // Cleanup
-                if (fs.existsSync(fileName)) fs.unlinkSync(fileName);
-                if (fs.existsSync('downloader.py')) fs.unlinkSync('downloader.py');
-                
-                // Exit after success
+                fs.unlinkSync(fileName);
+                fs.unlinkSync('downloader.py');
                 setTimeout(() => process.exit(0), 5000);
 
             } catch (err) {
-                // 6. Error Message
                 await sendMsg("❌ *වීඩියෝ හෝ Subtitles ගොනුවේ දෝෂයක්...*");
                 process.exit(1);
             }

@@ -39,12 +39,13 @@ async function sendMovie() {
             if (fs.existsSync(filePath)) {
                 console.log("📤 වීඩියෝ එක යවනවා... (මඳක් රැඳී සිටින්න)");
                 
-                await sock.sendMessage(userJid, { 
-                    video: fs.readFileSync(filePath), 
-                    caption: "🎬 *MFlix Video Delivery*\n\nමෙන්න ඔයා ඉල්ලපු වීඩියෝ එක සාර්ථකව ලැබුණා. රසවිඳින්න!\n\nPowered by edulk.xyz",
-                    mimetype: 'video/mp4',
-                    fileName: 'MFlix_Movie.mp4'
-                });
+                // send.js ඇතුළේ sendMessage කොටස පමණක් මෙහෙම කරන්න
+await sock.sendMessage(userJid, { 
+    video: { url: "./movie_mflix.mp4" }, // මෙහෙම දුන්නම ලොකු ෆයිල් ප්‍රශ්නයක් නැතුව යනවා
+    caption: "🎬 *MFlix Video Delivery*\n\nEnjoy your movie!",
+    mimetype: 'video/mp4',
+    fileName: 'MFlix_Movie.mp4'
+});
 
                 console.log("🚀 වීඩියෝ එක සාර්ථකව යැව්වා!");
                 await delay(10000); // Upload එක ස්ථිර වීමට තත්පර 10ක් රැඳී සිටීම

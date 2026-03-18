@@ -12,6 +12,7 @@ async function sendMovie() {
         const buffer = Buffer.from(base64Data, 'base64');
         const decodedSession = zlib.gunzipSync(buffer).toString();
         fs.writeFileSync('./auth_info/creds.json', decodedSession);
+        console.log("📂 Session File Ready.");
     } catch (e) {
         console.log("❌ Session Error: " + e.message);
         process.exit(1);
@@ -32,26 +33,25 @@ async function sendMovie() {
         const { connection } = update;
         
         if (connection === 'open') {
-            console.log("✅ WhatsApp එකට සම්බන්ධ වුණා!");
+            console.log("✅ WhatsApp Connected!");
             const userJid = process.env.USER_JID;
             const filePath = './movie_mflix.mp4';
 
             if (fs.existsSync(filePath)) {
-                console.log("📤 වීඩියෝ එක යවනවා... (මඳක් රැඳී සිටින්න)");
+                console.log("📤 Sending video... this may take a few minutes for large files.");
                 
-                // send.js ඇතුළේ sendMessage කොටස පමණක් මෙහෙම කරන්න
-await sock.sendMessage(userJid, { 
-    video: { url: "./movie_mflix.mp4" }, // මෙහෙම දුන්නම ලොකු ෆයිල් ප්‍රශ්නයක් නැතුව යනවා
-    caption: "🎬 *MFlix Video Delivery*\n\nEnjoy your movie!",
-    mimetype: 'video/mp4',
-    fileName: 'MFlix_Movie.mp4'
-});
+                await sock.sendMessage(userJid, { 
+                    video: { url: filePath }, 
+                    caption: "🎬 *MFlix Movie Delivery*\n\nරසවිඳින්න! 🍿\n\nWebsite: edulk.xyz",
+                    mimetype: 'video/mp4',
+                    fileName: 'MFlix_Movie.mp4'
+                });
 
-                console.log("🚀 වීඩියෝ එක සාර්ථකව යැව්වා!");
-                await delay(10000); // Upload එක ස්ථිර වීමට තත්පර 10ක් රැඳී සිටීම
+                console.log("🚀 Video Sent Successfully!");
+                await delay(15000); // විනාඩි කිහිපයක් රැඳී සිටීම
                 process.exit(0);
             } else {
-                console.log("❌ වීඩියෝ ෆයිල් එක සොයාගත නොහැක!");
+                console.log("❌ File not found!");
                 process.exit(1);
             }
         }
